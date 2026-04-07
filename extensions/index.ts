@@ -19,7 +19,7 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 import { connect } from "node:net";
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { join, basename } from "node:path";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -34,6 +34,7 @@ interface AgentInfo {
 	producedCount: number;
 	errorCount: number;
 	lastResponses: string[];
+	statusText: string;
 }
 
 // ── Socket RPC helpers ─────────────────────────────────────────────────
@@ -103,6 +104,16 @@ function findWorkspace(): string | null {
 	}
 }
 
+function readStatusText(workspace: string, agentName: string): string {
+	try {
+		const statusFile = join(workspace, "agents", agentName, "status_text");
+		if (!existsSync(statusFile)) return "";
+		return readFileSync(statusFile, "utf8").trim();
+	} catch {
+		return "";
+	}
+}
+
 function discoverAgents(workspace: string): Array<{ name: string; socketPath: string; pid: string }> {
 	const agentsDir = join(workspace, "agents");
 	if (!existsSync(agentsDir)) return [];
@@ -136,15 +147,17 @@ function isPidAlive(pid: string): boolean {
 
 // ── Query agent state ──────────────────────────────────────────────────
 
-async function queryAgent(name: string, socketPath: string, pid: string): Promise<AgentInfo> {
+async function queryAgent(name: string, socketPath: string, pid: string, workspace: string): Promise<AgentInfo> {
+	const statusText = readStatusText(workspace, name);
+
 	if (!isPidAlive(pid) || !existsSync(socketPath)) {
-		return { name, status: "dead", model: "-", streaming: false, messageCount: 0, receivedCount: 0, producedCount: 0, errorCount: 0, lastResponses: [] };
+		return { name, status: "dead", model: "-", streaming: false, messageCount: 0, receivedCount: 0, producedCount: 0, errorCount: 0, lastResponses: [], statusText };
 	}
 
 	// Get state
 	const stateResp = await sendRpc(socketPath, { type: "get_state" });
 	if (!stateResp || !stateResp.success || !stateResp.data) {
-		return { name, status: "unresponsive", model: "-", streaming: false, messageCount: 0, receivedCount: 0, producedCount: 0, errorCount: 0, lastResponses: [] };
+		return { name, status: "unresponsive", model: "-", streaming: false, messageCount: 0, receivedCount: 0, producedCount: 0, errorCount: 0, lastResponses: [], statusText };
 	}
 
 	const state = stateResp.data as Record<string, unknown>;
@@ -188,7 +201,20 @@ async function queryAgent(name: string, socketPath: string, pid: string): Promis
 		}
 	}
 
-	return { name, status, model: modelName, streaming: isStreaming, messageCount, receivedCount, producedCount, errorCount, lastResponses };
+	// Apply counter reset offset if present
+	try {
+		const offsetFile = join(workspace, "agents", name, "counter_reset_offset");
+		if (existsSync(offsetFile)) {
+			const offsets = JSON.parse(readFileSync(offsetFile, "utf8"));
+			receivedCount = Math.max(0, receivedCount - (offsets.received ?? 0));
+			producedCount = Math.max(0, producedCount - (offsets.produced ?? 0));
+			errorCount = Math.max(0, errorCount - (offsets.error ?? 0));
+		}
+	} catch {
+		// ignore
+	}
+
+	return { name, status, model: modelName, streaming: isStreaming, messageCount, receivedCount, producedCount, errorCount, lastResponses, statusText };
 }
 
 async function queryAllAgents(): Promise<{ workspace: string | null; agents: AgentInfo[] }> {
@@ -197,7 +223,7 @@ async function queryAllAgents(): Promise<{ workspace: string | null; agents: Age
 
 	const discovered = discoverAgents(workspace);
 	const agents = await Promise.all(
-		discovered.map((a) => queryAgent(a.name, a.socketPath, a.pid))
+		discovered.map((a) => queryAgent(a.name, a.socketPath, a.pid, workspace))
 	);
 
 	return { workspace, agents };
@@ -210,9 +236,12 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 		return [theme.fg("dim", "  HUD: no agents")];
 	}
 
+	const lines: string[] = [];
 	const segments: string[] = [];
 
 	for (const agent of agents) {
+		const isSelf = agent.name === selfName;
+
 		const icon =
 			agent.status === "streaming" ? theme.fg("accent", "●") :
 			agent.status === "compacting" ? theme.fg("warning", "◐") :
@@ -220,8 +249,8 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 			agent.status === "unresponsive" ? theme.fg("warning", "?") :
 			theme.fg("success", "○");
 
-		const isSelf = agent.name === selfName;
-		const name = isSelf ? theme.fg("success", agent.name) : theme.fg("text", agent.name);
+		// Dim non-self agent names so self pops visually
+		const name = isSelf ? theme.fg("success", agent.name) : theme.fg("dim", agent.name);
 		const recv = theme.fg("dim", `${agent.receivedCount}↓`);
 		const prod = theme.fg("muted", `${agent.producedCount}↑`);
 		const err = agent.errorCount > 0
@@ -231,7 +260,17 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 		segments.push(`${icon} ${name} ${recv} ${prod}${err}`);
 	}
 
-	return [truncateToWidth(`  ${segments.join(theme.fg("dim", " │ "))}`, width)];
+	lines.push(truncateToWidth(`  ${segments.join(theme.fg("dim", " │ "))}`, width));
+
+	// Show self-agent's status text as a second line
+	if (selfName) {
+		const self = agents.find((a) => a.name === selfName);
+		if (self?.statusText) {
+			lines.push(truncateToWidth(`  ${theme.fg("muted", self.statusText)}`, width));
+		}
+	}
+
+	return lines;
 }
 
 function formatFullStatus(agents: AgentInfo[], theme: Theme): string {
@@ -253,6 +292,7 @@ function formatFullStatus(agents: AgentInfo[], theme: Theme): string {
 			lines.push(`${a.name}: (no responses)`);
 		} else {
 			lines.push(`${a.name}:`);
+			if (a.statusText) lines.push(`  status: ${a.statusText}`);
 			for (const r of a.lastResponses) {
 				lines.push(r);
 			}
@@ -359,6 +399,52 @@ export default function (pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			await refreshHud(ctx);
 			ctx.ui.notify("HUD refreshed", "info");
+		},
+	});
+
+	pi.registerCommand("hud-reset", {
+		description: "Reset HUD counters for all agents or a specific agent. Usage: /hud-reset [agent-name]",
+		handler: async (args, ctx) => {
+			const workspace = findWorkspace();
+			if (!workspace) {
+				ctx.ui.notify("No agent workspace found", "warning");
+				return;
+			}
+
+			const targetAgent = args.trim() || null;
+			const discovered = discoverAgents(workspace);
+			let resetCount = 0;
+
+			for (const agent of discovered) {
+				if (targetAgent && agent.name !== targetAgent) continue;
+				const dir = join(workspace, "agents", agent.name);
+
+				// Clear status text
+				const statusFile = join(dir, "status_text");
+				if (existsSync(statusFile)) writeFileSync(statusFile, "");
+
+				// Snapshot current raw counts to use as offset
+				const info = await queryAgent(agent.name, agent.socketPath, agent.pid, workspace);
+				// Read existing offset to get true raw counts
+				let prevOffset = { received: 0, produced: 0, error: 0 };
+				try {
+					const offsetFile = join(dir, "counter_reset_offset");
+					if (existsSync(offsetFile)) prevOffset = JSON.parse(readFileSync(offsetFile, "utf8"));
+				} catch { /* ignore */ }
+
+				const rawReceived = info.receivedCount + (prevOffset.received ?? 0);
+				const rawProduced = info.producedCount + (prevOffset.produced ?? 0);
+				const rawError = info.errorCount + (prevOffset.error ?? 0);
+
+				writeFileSync(
+					join(dir, "counter_reset_offset"),
+					JSON.stringify({ received: rawReceived, produced: rawProduced, error: rawError })
+				);
+				resetCount++;
+			}
+
+			await refreshHud(ctx);
+			ctx.ui.notify(`Reset ${resetCount} agent(s)`, "info");
 		},
 	});
 
