@@ -257,7 +257,12 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 			? theme.fg("error", ` ${agent.errorCount}!`)
 			: "";
 
-		segments.push(`${icon} ${name} ${recv} ${prod}${err}`);
+		const segment = `${icon} ${name} ${recv} ${prod}${err}`;
+		if (isSelf) {
+			segments.push(`${theme.fg("success", "[")}${segment}${theme.fg("success", "]")}`);
+		} else {
+			segments.push(segment);
+		}
 	}
 
 	// Show self-agent's status text as first line (above indicators)
