@@ -266,7 +266,11 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 		if (self?.statusText) {
 			const isError = /\b(error|fail|crash|abort|unable|could not|exception|broken|denied)\b/i.test(self.statusText);
 			const statusColor = isError ? "error" : "success";
-			lines.push(truncateToWidth(`  ${theme.fg(statusColor, self.statusText)}`, width));
+			// Truncate plain text first, then colorize — so ellipsis gets the same color
+			const truncated = truncateToWidth(`  ${self.statusText}`, width);
+			const prefix = truncated.startsWith("  ") ? "  " : "";
+			const body = truncated.slice(prefix.length);
+			lines.push(`${prefix}${theme.fg(statusColor, body)}`);
 		}
 	}
 
