@@ -237,34 +237,35 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 	}
 
 	const lines: string[] = [];
-	const segments: string[] = [];
+	let selfSegment = "";
+	const otherSegments: string[] = [];
 
 	for (const agent of agents) {
 		const isSelf = agent.name === selfName;
 
-		const icon =
-			agent.status === "streaming" ? theme.fg("accent", "●") :
-			agent.status === "compacting" ? theme.fg("warning", "◐") :
-			agent.status === "dead" ? theme.fg("error", "✗") :
-			agent.status === "unresponsive" ? theme.fg("warning", "?") :
-			theme.fg("success", "○");
-
-		// Dim non-self agent names so self pops visually
-		const name = isSelf ? theme.fg("success", agent.name) : theme.fg("dim", agent.name);
-		const recv = theme.fg("dim", `${agent.receivedCount}↓`);
-		const prod = theme.fg("muted", `${agent.producedCount}↑`);
-		const err = agent.errorCount > 0
-			? theme.fg("error", ` ${agent.errorCount}!`)
-			: "";
-
-		const segment = `${icon} ${name} ${recv} ${prod}${err}`;
 		if (isSelf) {
-			// Green background + white text for current agent
-			segments.push(`\x1b[42;97m ${agent.name} ${agent.receivedCount}\u2193 ${agent.producedCount}\u2191${agent.errorCount > 0 ? ` ${agent.errorCount}!` : ""} \x1b[0m`);
+			// Green background + dark grey text for current agent, always first
+			selfSegment = `\x1b[42;90m ${agent.name} ${agent.receivedCount}\u2193 ${agent.producedCount}\u2191${agent.errorCount > 0 ? ` ${agent.errorCount}!` : ""} \x1b[0m`;
 		} else {
-			segments.push(segment);
+			const icon =
+				agent.status === "streaming" ? theme.fg("accent", "●") :
+				agent.status === "compacting" ? theme.fg("warning", "◐") :
+				agent.status === "dead" ? theme.fg("error", "✗") :
+				agent.status === "unresponsive" ? theme.fg("warning", "?") :
+				theme.fg("success", "○");
+
+			const name = theme.fg("dim", agent.name);
+			const recv = theme.fg("dim", `${agent.receivedCount}\u2193`);
+			const prod = theme.fg("muted", `${agent.producedCount}\u2191`);
+			const err = agent.errorCount > 0
+				? theme.fg("error", ` ${agent.errorCount}!`)
+				: "";
+
+			otherSegments.push(`${icon} ${name} ${recv} ${prod}${err}`);
 		}
 	}
+
+	const segments = selfSegment ? [selfSegment, ...otherSegments] : otherSegments;
 
 	// Show self-agent's status text as first line (above indicators)
 	if (selfName) {
