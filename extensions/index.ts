@@ -260,15 +260,17 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 		segments.push(`${icon} ${name} ${recv} ${prod}${err}`);
 	}
 
-	lines.push(truncateToWidth(`  ${segments.join(theme.fg("dim", " │ "))}`, width));
-
-	// Show self-agent's status text as a second line
+	// Show self-agent's status text as first line (above indicators)
 	if (selfName) {
 		const self = agents.find((a) => a.name === selfName);
 		if (self?.statusText) {
-			lines.push(truncateToWidth(`  ${theme.fg("muted", self.statusText)}`, width));
+			const isError = /\b(error|fail|crash|abort|unable|could not|exception|broken|denied)\b/i.test(self.statusText);
+			const statusColor = isError ? "error" : "success";
+			lines.push(truncateToWidth(`  ${theme.fg(statusColor, self.statusText)}`, width));
 		}
 	}
+
+	lines.push(truncateToWidth(`  ${segments.join(theme.fg("dim", " │ "))}`, width));
 
 	return lines;
 }
