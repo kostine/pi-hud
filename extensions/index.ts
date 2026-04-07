@@ -271,6 +271,7 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 			const prefix = truncated.startsWith("  ") ? "  " : "";
 			const body = truncated.slice(prefix.length);
 			lines.push(`${prefix}${theme.fg(statusColor, body)}`);
+			lines.push(theme.fg("dim", "  " + "─".repeat(Math.max(0, width - 4))));
 		}
 	}
 
