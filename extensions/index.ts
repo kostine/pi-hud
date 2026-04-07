@@ -259,7 +259,8 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 
 		const segment = `${icon} ${name} ${recv} ${prod}${err}`;
 		if (isSelf) {
-			segments.push(`${theme.fg("success", "[")}${segment}${theme.fg("success", "]")}`);
+			// Green background + white text for current agent
+			segments.push(`\x1b[42;97m ${agent.name} ${agent.receivedCount}\u2193 ${agent.producedCount}\u2191${agent.errorCount > 0 ? ` ${agent.errorCount}!` : ""} \x1b[0m`);
 		} else {
 			segments.push(segment);
 		}
