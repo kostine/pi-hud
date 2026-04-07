@@ -245,7 +245,7 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 
 		if (isSelf) {
 			// Green background + dark grey text for current agent, always first
-			selfSegment = `\x1b[42;90m ${agent.name} ${agent.receivedCount}\u2193 ${agent.producedCount}\u2191${agent.errorCount > 0 ? ` ${agent.errorCount}!` : ""} \x1b[0m`;
+			selfSegment = `\x1b[42;90;1m ${agent.name} ${agent.receivedCount}\u2193 ${agent.producedCount}\u2191${agent.errorCount > 0 ? ` ${agent.errorCount}!` : ""} \x1b[0m`;
 		} else {
 			const icon =
 				agent.status === "streaming" ? theme.fg("accent", "●") :
