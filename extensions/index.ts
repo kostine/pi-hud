@@ -271,7 +271,9 @@ function renderHudWidget(agents: AgentInfo[], width: number, theme: Theme, selfN
 	if (selfName) {
 		const self = agents.find((a) => a.name === selfName);
 		if (self?.statusText) {
-			const isError = /\b(error|fail|crash|abort|unable|could not|exception|broken|denied)\b/i.test(self.statusText);
+			const hasPositive = /\b(healthy|passing|green|fixed|resolved|success|complete|done|ready|up|running|no error|minor)\b/i.test(self.statusText);
+			const hasNegative = /\b(error|fail|crash|abort|unable|could not|exception|broken|denied)\b/i.test(self.statusText);
+			const isError = hasNegative && !hasPositive;
 			const statusColor = isError ? "error" : "success";
 			// Truncate plain text first, then colorize — so ellipsis gets the same color
 			const truncated = truncateToWidth(`  ${self.statusText}`, width);
