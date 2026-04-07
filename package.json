@@ -1,0 +1,16 @@
+{
+  "name": "pi-hud",
+  "version": "0.1.0",
+  "description": "Heads-up display for pi micro-agents — live stats, progress, errors, notifications",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@mariozechner/pi-ai": "*",
+    "@sinclair/typebox": "*"
+  }
+}
